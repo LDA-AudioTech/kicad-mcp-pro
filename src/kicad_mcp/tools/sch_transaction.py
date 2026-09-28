@@ -66,6 +66,11 @@ def _active_schematic() -> Path:
     return files[0]
 
 
+def _label_identity(name: str, x: float, y: float) -> tuple[str, float, float]:
+    """Normalize one label instance to the same coordinate precision as connectivity groups."""
+    return (name, round(float(x), 4), round(float(y), 4))
+
+
 def register(mcp: FastMCP) -> None:
     """Register transactional schematic plan tools."""
 
@@ -174,11 +179,12 @@ def register(mcp: FastMCP) -> None:
     @mcp.tool()
     @headless_compatible
     def sch_verify_plan(plan_id: str) -> str:
-        """Verify an applied plan: confirm labels exist; report ERC availability.
+        """Verify an applied plan against the schematic; report ERC availability.
 
-        Connectivity verification (that every planned label is present in the
-        schematic) runs file-backed. Full ERC is declared explicitly as available or
-        unavailable rather than silently skipped — run ``run_erc()`` for the full gate.
+        Verification fails closed when planned labels or components are absent,
+        planned labels are unattached, or connectivity analysis cannot complete.
+        Full ERC is declared explicitly as available or unavailable rather than
+        silently skipped — run ``run_erc()`` for the full electrical gate.
         """
         stored = _load_stored(plan_id)
         if stored is None:
@@ -188,10 +194,74 @@ def register(mcp: FastMCP) -> None:
                 {"plan_id": plan_id, "status": stored.status, "note": "Plan is not applied yet."}
             )
 
+        from .schematic import build_connectivity_groups, parse_schematic_file
+
         active = _active_schematic()
-        text = active.read_text(encoding="utf-8", errors="ignore")
-        missing = [label.text for label in stored.plan.labels if f'"{label.text}"' not in text]
-        connectivity = "pass" if not missing else "fail"
+        parsed = parse_schematic_file(active)
+        placed_label_identities = {
+            _label_identity(
+                str(label.get("name", "")),
+                float(label.get("x", 0.0)),
+                float(label.get("y", 0.0)),
+            )
+            for label in parsed.get("labels", [])
+        }
+        missing_label_identities = {
+            _label_identity(label.text, label.x, label.y)
+            for label in stored.plan.labels
+            if _label_identity(label.text, label.x, label.y) not in placed_label_identities
+        }
+        missing_labels = [
+            label.text
+            for label in stored.plan.labels
+            if _label_identity(label.text, label.x, label.y) in missing_label_identities
+        ]
+        placed_references = {
+            str(symbol.get("reference", "")) for symbol in parsed.get("symbols", [])
+        }
+        missing_components = [
+            component.reference
+            for component in stored.plan.components
+            if component.reference not in placed_references
+        ]
+
+        unconnected_labels: list[str] = []
+        connectivity_error: str | None = None
+        if stored.plan.labels:
+            try:
+                groups = build_connectivity_groups(active)
+            except (OSError, RuntimeError, ValueError) as exc:
+                connectivity_error = str(exc)
+            else:
+                for label in stored.plan.labels:
+                    label_identity = _label_identity(label.text, label.x, label.y)
+                    if label_identity in missing_label_identities:
+                        continue
+                    planned_point = label_identity[1:]
+                    matching_groups = [
+                        group
+                        for group in groups
+                        if label.text in group.get("names", [])
+                        and planned_point
+                        in {
+                            (round(float(point[0]), 4), round(float(point[1]), 4))
+                            for point in group.get("points", [])
+                        }
+                    ]
+                    if not matching_groups or all(
+                        not group.get("pins") and len(group.get("points", [])) == 1
+                        for group in matching_groups
+                    ):
+                        unconnected_labels.append(label.text)
+
+        connectivity = (
+            "pass"
+            if not missing_labels
+            and not missing_components
+            and not unconnected_labels
+            and connectivity_error is None
+            else "fail"
+        )
 
         erc_available = shutil.which("kicad-cli") is not None
         erc_status = "available" if erc_available else "unavailable"
@@ -205,7 +275,10 @@ def register(mcp: FastMCP) -> None:
             {
                 "plan_id": plan_id,
                 "connectivity": connectivity,
-                "missing_labels": missing,
+                "missing_labels": missing_labels,
+                "missing_components": missing_components,
+                "unconnected_labels": unconnected_labels,
+                "connectivity_error": connectivity_error,
                 "erc": erc_status,
                 "erc_note": erc_note,
             },
