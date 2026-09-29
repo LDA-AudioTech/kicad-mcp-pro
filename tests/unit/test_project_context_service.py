@@ -4,6 +4,9 @@ import importlib
 import importlib.util
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
+
+import pytest
 
 
 def _service_type() -> type[Any]:
@@ -111,6 +114,28 @@ def test_set_project_rejects_missing_directory_without_side_effects(tmp_path: Pa
         == "Project directory does not exist or is not a directory."
     )
     assert events == []
+
+
+@pytest.mark.parametrize("field", ("project_dir", "pcb_file", "sch_file", "output_dir"))
+@pytest.mark.parametrize("unsafe_path", (r"\\attacker\share", "//attacker/share", r"\\?\UNC\attacker\share"))
+def test_set_project_rejects_network_paths_before_resolution(
+    tmp_path: Path, field: str, unsafe_path: str
+) -> None:
+    service_type = _service_type()
+    service = service_type(
+        scan_project_dir=lambda _path: {},
+        apply_project=lambda *_args, **_kwargs: None,
+        clear_cache=lambda: None,
+        reset_connection=lambda: None,
+        reset_live_edit=lambda: None,
+        render_project_info=lambda: "project-info",
+    )
+    arguments = {"project_dir": str(tmp_path), field: unsafe_path}
+
+    with patch.object(Path, "resolve", side_effect=AssertionError("resolution must not run")):
+        result = service.set_project(**arguments)
+
+    assert result.startswith("E_UNSAFE_PATH:")
 
 
 def test_set_project_preserves_incomplete_project_error(tmp_path: Path) -> None:

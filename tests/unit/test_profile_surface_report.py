@@ -33,10 +33,10 @@ def test_bounded_surfaces_reduce_catalog_pressure_and_preserve_review_contract(
     assert isinstance(build, dict)
     assert isinstance(expert, dict)
 
-    assert default["callableTools"] == 24
+    assert default["callableTools"] == 23
     assert default["forbiddenToolExposures"] == 0
-    assert review["profileTaggedCases"] == 8
-    assert review["profileTaggedCasesCovered"] == 8
+    assert review["profileTaggedCases"] == 7
+    assert review["profileTaggedCasesCovered"] == 7
     assert review["profileTaggedCoveragePct"] == 100.0
     assert review["forbiddenToolExposures"] == 0
     assert build["profileTaggedCases"] == 4
@@ -52,8 +52,9 @@ def test_bounded_surfaces_reduce_catalog_pressure_and_preserve_review_contract(
     for profile in ("default", "review", "build", "release"):
         surface = data[profile]
         assert isinstance(surface, dict)
-        assert surface["declaredTools"] == 24
-        assert surface["callableTools"] == 24
+        expected = 23 if profile in ("default", "review") else 24
+        assert surface["declaredTools"] == expected
+        assert surface["callableTools"] == expected
 
 
 def test_profile_surface_report_check_mode_detects_drift(

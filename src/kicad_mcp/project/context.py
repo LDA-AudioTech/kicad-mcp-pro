@@ -8,6 +8,11 @@ from pathlib import Path
 from typing import Protocol
 
 
+def _is_windows_network_or_device_path(raw_path: str) -> bool:
+    path = raw_path.replace("/", "\\")
+    return path.startswith("\\\\") or path.startswith(("\\??\\", "\\Device\\"))
+
+
 class ApplyProjectProtocol(Protocol):
     def __call__(
         self,
@@ -39,6 +44,12 @@ class ProjectContextService:
         output_dir: str = "",
     ) -> str:
         """Set the active project directory and resolved KiCad file paths."""
+        if any(
+            _is_windows_network_or_device_path(path)
+            for path in (project_dir, pcb_file, sch_file, output_dir)
+            if path
+        ):
+            return "E_UNSAFE_PATH: Network and device paths are not allowed."
         project_path = Path(project_dir).expanduser().resolve()
         if not project_path.exists() or not project_path.is_dir():
             return "Project directory does not exist or is not a directory."
