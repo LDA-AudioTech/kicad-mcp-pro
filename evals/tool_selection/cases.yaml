@@ -218,7 +218,7 @@ cases:
   - library
   - bom
   - read-only
-  - review-profile
+  - network
   allowed_tools:
   - kicad_set_project
 - id: drc_report

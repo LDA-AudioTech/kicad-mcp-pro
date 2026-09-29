@@ -2001,6 +2001,7 @@ def build_server(profile: str | None = None, *, defer_registration: bool = False
     server.operating_mode = operating_mode
     server.allow_experimental_tools = operating_mode is OperatingMode.EXPERIMENTAL
     server.allowed_tool_names = set(tools_for_profile(selected_profile))
+    server.execution_tool_names = set(server.allowed_tool_names)
 
     # ------------------------------------------------------------------
     # Experimental MCP Tasks extension for draft/future MCP protocol work

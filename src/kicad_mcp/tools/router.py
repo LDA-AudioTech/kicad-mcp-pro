@@ -645,7 +645,6 @@ _REVIEW_TOOLS: tuple[str, ...] = (
     "project_quality_gate",
     "lib_verify_component_contract",
     "sch_visual_qa",
-    "lib_get_bom_with_pricing",
 )
 
 _BUILD_TOOLS: tuple[str, ...] = (

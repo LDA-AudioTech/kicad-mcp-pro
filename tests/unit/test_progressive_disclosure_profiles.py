@@ -36,7 +36,8 @@ def test_default_configuration_uses_bounded_profile(tmp_path: Path) -> None:
 def test_workflow_profiles_are_public_and_bounded() -> None:
     assert set(WORKFLOW_PROFILES).issubset(available_profiles())
     assert tools_for_profile("default") == tools_for_profile("review")
-    assert len(tools_for_profile("review")) == 24
+    assert len(tools_for_profile("review")) == 23
+    assert "lib_get_bom_with_pricing" not in tools_for_profile("review")
     assert len(tools_for_profile("build")) == 24
     assert len(tools_for_profile("release")) == 24
     assert tools_for_profile("expert") == tools_for_profile("full")
@@ -150,6 +151,15 @@ async def test_default_discovery_hides_tools_outside_profile() -> None:
     assert "project_get_next_action" in project_tools
     assert "Unknown or unavailable category 'pcb_write'" in hidden_category
     assert "pcb_write" not in hidden_category.split("Available categories:", 1)[-1]
+
+
+@pytest.mark.anyio
+async def test_default_profile_denies_direct_calls_to_hidden_network_tools() -> None:
+    server = build_server("default")
+
+    result = await call_tool_text(server, "lib_get_bom_with_pricing", {"quantity": 1})
+
+    assert "not available in this server execution surface" in result
 
 
 def test_discovery_without_allowlist_preserves_full_legacy_visibility() -> None:
