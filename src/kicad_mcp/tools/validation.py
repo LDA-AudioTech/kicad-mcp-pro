@@ -20,10 +20,11 @@ from .. import __version__
 from ..config import get_config
 from ..connection import KiCadConnectionError, get_board
 from ..discovery import get_cli_capabilities
+from ..errors import UnsafePathError
 from ..models.common import _FootprintLike
 from ..models.component_contracts import find_component_contract
 from ..models.verdict import Finding, SuggestedFix, Verdict, VerdictReport, stable_finding_id
-from ..path_safety import resolve_under
+from ..path_safety import resolve_child_sheet, resolve_under
 from ..pcb.board_access import BoardAccessError, board_footprints
 from ..utils.dru import (
     SExprNode,
@@ -1059,7 +1060,10 @@ def _empty_child_sheet_ids(top_file: Path) -> set[str]:
         filename = str(contract.get("filename", ""))
         if not filename:
             continue
-        child_path = top_file.parent / filename
+        try:
+            child_path = resolve_child_sheet(top_file.parent, top_file, filename)
+        except UnsafePathError:
+            continue
         if not child_path.exists():
             continue
         try:
@@ -1167,7 +1171,13 @@ def _evaluate_schematic_connectivity_gate() -> GateOutcome:
     sheet_keys_by_path: dict[Path, set[str]] = {}
     available_sheet_keys: set[str] = set()
     for contract in contracts:
-        child_path = top_file.parent / str(contract["filename"])
+        try:
+            child_path = resolve_child_sheet(
+                top_file.parent, top_file, str(contract["filename"])
+            )
+        except UnsafePathError:
+            blocked.append(f"Child sheet '{contract['name']}' has an unsafe path.")
+            continue
         sheet_keys = _sheet_contract_keys(contract)
         sheet_keys_by_path[child_path] = sheet_keys
         available_sheet_keys.update(sheet_keys)

@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from kicad_mcp.config import KiCadMCPConfig
 from kicad_mcp.errors import KiCadNotRunningError, UnsafePathError, error_payload
-from kicad_mcp.path_safety import resolve_repo_or_temp
+from kicad_mcp.path_safety import resolve_child_sheet, resolve_repo_or_temp
 from kicad_mcp.utils.paths import relative_subpath, resolve_under
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -144,6 +145,22 @@ def test_mcp_path_safety_rejects_windows_unc_paths_on_non_windows_hosts(tmp_path
 
     with pytest.raises(UnsafePathError, match=scenario["expectedNonWindowsError"]):
         resolve_under(tmp_path, Path(scenario["rawPath"]))
+
+
+@pytest.mark.parametrize("unsafe_path", (r"\\attacker\share", "//attacker/share", r"\\?\UNC\attacker\share"))
+def test_resolve_under_rejects_network_paths_before_filesystem_access(
+    tmp_path: Path, unsafe_path: str
+) -> None:
+    with patch.object(Path, "resolve", side_effect=AssertionError("resolution must not run")):
+        with pytest.raises(UnsafePathError, match="network and device"):
+            resolve_under(tmp_path, unsafe_path)
+
+
+def test_child_sheet_rejects_network_filename_before_filesystem_access(tmp_path: Path) -> None:
+    parent_file = tmp_path / "root.kicad_sch"
+    with patch.object(Path, "resolve", side_effect=AssertionError("resolution must not run")):
+        with pytest.raises(UnsafePathError, match="network and device"):
+            resolve_child_sheet(tmp_path, parent_file, r"\\attacker\share\child.kicad_sch")
 
 
 def test_mcp_path_safety_accepts_posix_colon_relative_paths(tmp_path: Path) -> None:

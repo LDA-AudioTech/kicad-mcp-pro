@@ -23,7 +23,7 @@ from mcp.server.fastmcp import FastMCP
 from ..config import get_config
 from ..connection import KiCadConnectionError, get_kicad
 from ..discovery import is_numbered_duplicate_kicad_file
-from ..errors import SchematicWriteUnsafeError
+from ..errors import SchematicWriteUnsafeError, UnsafePathError
 from ..file_formats import upgrade_generated_file
 from ..models.schematic import (
     STANDARD_SYMBOL_FIELDS,
@@ -34,7 +34,7 @@ from ..models.schematic import (
     UpdatePropertiesInput,
 )
 from ..models.visual_qa import run_visual_qa as _run_visual_qa
-from ..path_safety import resolve_under
+from ..path_safety import resolve_child_sheet, resolve_under
 from ..schematic.back_annotation import SchematicBackAnnotationService
 from ..schematic.basic_authoring import SchematicBasicAuthoringService
 from ..schematic.circuit_compilation import (
@@ -4610,6 +4610,7 @@ def _iter_child_sheet_paths(sch_file: Path) -> list[tuple[str, Path]]:
         return []
 
     discovered: list[tuple[str, Path]] = []
+    project_root = sch_file.parent
 
     def visit(
         current_name: str,
@@ -4620,7 +4621,13 @@ def _iter_child_sheet_paths(sch_file: Path) -> list[tuple[str, Path]]:
         children = hierarchy.get("root", {}).get("children", [])
         for child in children:
             child_name = str(child.get("name", "Sheet"))
-            child_file = current_path.parent / str(child.get("filename", ""))
+            try:
+                child_file = resolve_child_sheet(
+                    project_root, current_path, str(child.get("filename", ""))
+                )
+            except UnsafePathError as exc:
+                logger.warning("schematic_child_sheet_unsafe_path", sheet=child_name, error=str(exc))
+                continue
             display_name = f"{current_name}/{child_name}" if current_name else child_name
             discovered.append((display_name, child_file))
             if child_file.exists():

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -31,6 +32,12 @@ def test_load_profile_contains_required_keys() -> None:
 def test_load_profile_unknown_raises() -> None:
     with pytest.raises(ValueError, match="Unknown DFM profile"):
         _load_profile("Nonexistent", "standard")
+
+
+def test_load_profile_rejects_network_identifier_before_filesystem_access() -> None:
+    with patch.object(Path, "is_file", side_effect=AssertionError("is_file must not run")):
+        with pytest.raises(ValueError, match="Unknown DFM profile"):
+            _load_profile(r"\\attacker\share", "standard")
 
 
 @pytest.mark.anyio

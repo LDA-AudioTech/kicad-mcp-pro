@@ -55,13 +55,14 @@ def _available_profile_names() -> list[str]:
 
 def _load_profile(manufacturer: str, tier: str) -> dict[str, Any]:
     resource_name = _profile_resource_name(manufacturer, tier)
-    resource_root = resources.files("kicad_mcp.dfm_profiles")
-    resource = resource_root / resource_name
-    if not resource.is_file():
-        available = ", ".join(_available_profile_names())
+    available_names = _available_profile_names()
+    if resource_name[:-5] not in available_names:
+        available = ", ".join(available_names)
         raise ValueError(
             f"Unknown DFM profile '{manufacturer}/{tier}'. Available profiles: {available}"
         )
+    resource_root = resources.files("kicad_mcp.dfm_profiles")
+    resource = resource_root / resource_name
     return cast(dict[str, Any], json.loads(resource.read_text(encoding="utf-8")))
 
 

@@ -42,6 +42,12 @@ def resolve_under(root: Path, raw_path: str | Path, *, allow_absolute: bool = Tr
     return resolved
 
 
+def resolve_child_sheet(root: Path, parent_file: Path, raw_filename: str | Path) -> Path:
+    """Resolve a schematic Sheetfile inside its project before any filesystem access."""
+    reject_foreign_windows_path(raw_filename)
+    return resolve_under(root, parent_file.parent / raw_filename)
+
+
 def resolve_repo_or_temp(raw_path: str | Path, *, repo_root: Path) -> Path:
     """Resolve a runtime path under the repository or system temp directory.
 
@@ -71,6 +77,9 @@ def relative_subpath(raw_path: str | Path) -> Path:
 
 def reject_foreign_windows_path(raw_path: str | Path) -> None:
     """Reject Windows drive/UNC paths before POSIX treats backslashes as filename bytes."""
+    normalized = str(raw_path).replace("/", "\\")
+    if normalized.startswith("\\\\") or normalized.startswith(("\\??\\", "\\Device\\")):
+        raise UnsafePathError("Windows network and device paths are not allowed.")
     if os.name == "nt":
         return
 
